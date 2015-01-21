@@ -197,6 +197,16 @@ namespace LibGit2Sharp
         RevertResult Revert(Commit commit, Signature reverter, RevertOptions options);
 
         /// <summary>
+        /// Returns whether merging <paramref name="theirTree"/> into <paramref name="ourTree"/>
+        /// would result in merge conflicts.
+        /// </summary>
+        /// <param name="ourTree">The base tree to merge into.</param>
+        /// <param name="theirTree">The tree to merge into <paramref name="ourTree"/>.</param>
+        /// <param name="ancestorTree">The common ancestor of the two trees, or null if none exists.</param>
+        /// <returns>Whether a merge would result in conflicts</returns>
+        bool MergeHasConflicts(Tree ourTree, Tree theirTree, Tree ancestorTree);
+
+        /// <summary>
         /// Merge changes from commit into the branch pointed at by HEAD..
         /// </summary>
         /// <param name="commit">The commit to merge into the branch pointed at by HEAD.</param>

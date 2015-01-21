@@ -975,6 +975,25 @@ namespace LibGit2Sharp
         }
 
         /// <summary>
+        /// Returns whether merging <paramref name="theirTree"/> into <paramref name="ourTree"/>
+        /// would result in merge conflicts.
+        /// </summary>
+        /// <param name="ourTree">The base tree to merge into.</param>
+        /// <param name="theirTree">The tree to merge into <paramref name="ourTree"/>.</param>
+        /// <param name="ancestorTree">The common ancestor of the two trees, or null if none exists.</param>
+        /// <returns>Whether a merge would result in conflicts</returns>
+        public bool MergeHasConflicts(Tree ourTree, Tree theirTree, Tree ancestorTree)
+        {
+            using (var ourHandle = Proxy.git_object_peel(Handle, ourTree.Id, GitObjectType.Tree, true))
+            using (var theirHandle = Proxy.git_object_peel(Handle, theirTree.Id, GitObjectType.Tree, true))
+            using (var ancestorHandle = Proxy.git_object_peel(Handle, ancestorTree.Id, GitObjectType.Tree, false))
+            using (var indexHandle = Proxy.git_merge_trees(Handle, ourHandle, theirHandle, ancestorHandle))
+            {
+                return Proxy.git_index_has_conflicts(indexHandle);
+            }
+        }
+
+        /// <summary>
         /// Merges changes from commit into the branch pointed at by HEAD.
         /// </summary>
         /// <param name="commit">The commit to merge into the branch pointed at by HEAD.</param>
