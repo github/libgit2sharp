@@ -2488,6 +2488,11 @@ namespace LibGit2Sharp.Core
             return NativeMethods.git_repository_workdir(repo);
         }
 
+        public static FilePath git_repository_workdir(IntPtr repo)
+        {
+            return NativeMethods.git_repository_workdir(repo);
+        }
+
         public static void git_repository_set_head_detached(RepositorySafeHandle repo, ObjectId commitish,
             Signature signature, string logMessage)
         {

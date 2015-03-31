@@ -88,10 +88,11 @@ namespace LibGit2Sharp
         /// Clean the input stream and write to the output stream.
         /// </summary>
         /// <param name="path">The path of the file being filtered</param>
+        /// <param name="workingDirectory"></param>
         /// <param name="input">The git buf input reader</param>
         /// <param name="output">The git buf output writer</param>
         /// <returns>0 if successful and <see cref="GitErrorCode.PassThrough"/> to skip and pass through</returns>
-        protected virtual int Clean(string path, Stream input, Stream output)
+        protected virtual int Clean(string path, string workingDirectory, Stream input, Stream output)
         {
             return (int)GitErrorCode.PassThrough;
         }
@@ -100,10 +101,11 @@ namespace LibGit2Sharp
         /// Smudge the input stream and write to the output stream.
         /// </summary>
         /// <param name="path">The path of the file being filtered</param>
+        /// <param name="repositoryWorkingDirectory"></param>
         /// <param name="input">The git buf input reader</param>
         /// <param name="output">The git buf output writer</param>
         /// <returns>0 if successful and <see cref="GitErrorCode.PassThrough"/> to skip and pass through</returns>
-        protected virtual int Smudge(string path, Stream input, Stream output)
+        protected virtual int Smudge(string path, string repositoryWorkingDirectory, Stream input, Stream output)
         {
             return (int)GitErrorCode.PassThrough;
         }
@@ -188,13 +190,14 @@ namespace LibGit2Sharp
             IntPtr gitBufferToPtr, IntPtr gitBufferFromPtr, IntPtr filterSourcePtr)
         {
             var filterSource = FilterSource.FromNativePtr(filterSourcePtr);
+            var workingDirectory = filterSource.GetRepositoryWorkingDirectory();
             using (var reader = new GitBufReadStream(gitBufferFromPtr))
             using (var writer = new GitBufWriteStream(gitBufferToPtr))
             using (var bufferedWriter = new BufferedStream(writer))
             {
                 return filterSource.SourceMode == FilterMode.Clean ?
-                    Clean(filterSource.Path, reader, bufferedWriter) :
-                    Smudge(filterSource.Path, reader, bufferedWriter);
+                    Clean(filterSource.Path, workingDirectory, reader, bufferedWriter) :
+                    Smudge(filterSource.Path, workingDirectory, reader, bufferedWriter);
             }
         }
     }

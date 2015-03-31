@@ -8,6 +8,8 @@ namespace LibGit2Sharp
     /// </summary>
     public class FilterSource
     {
+        readonly GitFilterSource source;
+
         /// <summary>
         /// Needed for mocking purposes
         /// </summary>
@@ -15,9 +17,16 @@ namespace LibGit2Sharp
 
         internal FilterSource(FilePath path, FilterMode mode, GitFilterSource source)
         {
+            this.source = source;
             SourceMode = mode;
             ObjectId = new ObjectId(source.oid);
             Path = path.Native;
+        }
+
+        internal string GetRepositoryWorkingDirectory()
+        {
+            var filePath = Proxy.git_repository_workdir(source.repository);
+            return filePath.Native;
         }
 
         /// <summary>
