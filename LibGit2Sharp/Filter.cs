@@ -115,10 +115,11 @@ namespace LibGit2Sharp
         /// Clean the input stream and write to the output stream.
         /// </summary>
         /// <param name="path">The path of the file being filtered</param>
+        /// <param name="repositoryWorkingDirectory"></param>
         /// <param name="input">The git buf input reader</param>
         /// <param name="output">The git buf output writer</param>
         /// <returns>0 if successful and -30 to skip and pass through</returns>
-        protected virtual int Clean(string path, GitBufReader input, GitBufWriter output)
+        protected virtual int Clean(string path, string repositoryWorkingDirectory, GitBufReader input, GitBufWriter output)
         {
             return (int)GitErrorCode.PassThrough;
         }
@@ -127,10 +128,11 @@ namespace LibGit2Sharp
         /// Smudge the input stream and write to the output stream.
         /// </summary>
         /// <param name="path">The path of the file being filtered</param>
+        /// <param name="repositoryPath"></param>
         /// <param name="input">The git buf input reader</param>
         /// <param name="output">The git buf output writer</param>
         /// <returns>0 if successful and -30 to skip and pass through</returns>
-        protected virtual int Smudge(string path, GitBufReader input, GitBufWriter output)
+        protected virtual int Smudge(string path, string repositoryPath, GitBufReader input, GitBufWriter output)
         {
             return (int)GitErrorCode.PassThrough;
         }
@@ -240,10 +242,9 @@ namespace LibGit2Sharp
         /// <returns></returns>
         int CheckCallback(GitFilter gitFilter, IntPtr payload, IntPtr filterSourcePtr, IntPtr attributeValues)
         {
-            //string filterForAttributes = GitFilter.GetAttributesFromPointer(attributeValues);
-            string attributes1 = GitFilter.GetAttributesFromPointer(gitFilter.attributes);
+            string attributesFromPointer = GitFilter.GetAttributesFromPointer(gitFilter.attributes);
             var filterSource = FilterSource.FromNativePtr(filterSourcePtr);
-            return Check(attributes1.Split(','), filterSource);
+            return Check(attributesFromPointer.Split(','), filterSource);
         }
 
 
@@ -261,12 +262,13 @@ namespace LibGit2Sharp
             IntPtr gitBufferToPtr, IntPtr gitBufferFromPtr, IntPtr filterSourcePtr)
         {
             var filterSource = FilterSource.FromNativePtr(filterSourcePtr);
+            var repositoryPath = Proxy.git_repository_workdir(filterSource.RepositoryHandle);
             var reader = new GitBufReader(gitBufferFromPtr);
             var writer = new GitBufWriter(gitBufferToPtr);
 
-            return filterSource.SourceMode == FilterMode.Clean ? 
-                Clean(filterSource.Path,reader, writer) :
-                Smudge(filterSource.Path, reader, writer);
+            return filterSource.SourceMode == FilterMode.Clean ?
+                Clean(filterSource.Path, repositoryPath.Native, reader, writer) :
+                Smudge(filterSource.Path, repositoryPath.Native, reader, writer);
         }
 
         /// <summary>
