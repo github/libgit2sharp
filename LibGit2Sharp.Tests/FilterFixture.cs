@@ -252,14 +252,14 @@ namespace LibGit2Sharp.Tests
                 this.initCallback = initCallback;
             }
 
-            protected override int Clean(string path, Stream input, Stream output)
+            protected override int Clean(string path, string root, Stream input, Stream output)
             {
-                return cleanCallback != null ? cleanCallback(input, output) : base.Clean(path, input, output);
+                return cleanCallback != null ? cleanCallback(input, output) : base.Clean(path, root, input, output);
             }
 
-            protected override int Smudge(string path, Stream input, Stream output)
+            protected override int Smudge(string path, string root, Stream input, Stream output)
             {
-                return smudgeCallback != null ? smudgeCallback(input, output) : base.Smudge(path, input, output);
+                return smudgeCallback != null ? smudgeCallback(input, output) : base.Smudge(path, root, input, output);
             }
 
             protected override int Initialize()

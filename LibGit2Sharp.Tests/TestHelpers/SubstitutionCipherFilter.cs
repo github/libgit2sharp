@@ -13,13 +13,13 @@ namespace LibGit2Sharp.Tests.TestHelpers
         {
         }
 
-        protected override int Clean(string path, Stream input, Stream output)
+        protected override int Clean(string path, string root, Stream input, Stream output)
         {
             CleanCalledCount++;
             return RotateByThirteenPlaces(input, output);
         }
 
-        protected override int Smudge(string path, Stream input, Stream output)
+        protected override int Smudge(string path, string root, Stream input, Stream output)
         {
             SmudgeCalledCount++;
             return RotateByThirteenPlaces(input, output);
