@@ -15,7 +15,7 @@ namespace LibGit2Sharp.Core
         [MarshalAs(UnmanagedType.FunctionPtr)]
         public free_fn free;        
 
-        public delegate int write_fn(IntPtr stream, IntPtr buffer, uint len);
+        public delegate int write_fn(IntPtr stream, IntPtr buffer, UIntPtr len);
         public delegate int close_fn(IntPtr stream);
         public delegate void free_fn(IntPtr stream);
     }

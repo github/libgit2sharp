@@ -41,7 +41,7 @@ namespace LibGit2Sharp
             {
                 attributes = EncodingMarshaler.FromManaged(Encoding.UTF8, attributesAsString),
                 init = InitializeCallback,
-                stream = StreamCallback,
+                stream = StreamCreateCallback,
             };
         }
 
@@ -199,108 +199,120 @@ namespace LibGit2Sharp
             return Initialize();
         }
 
-        unsafe int StreamCallback(out IntPtr git_writestream_out, GitFilter self, IntPtr payload, IntPtr filterSourcePtr, IntPtr git_writestream_next)
+        int StreamCreateCallback(out IntPtr git_writestream_out, GitFilter self, IntPtr payload, IntPtr filterSourcePtr, IntPtr git_writestream_next)
         {
-            if (filterSourcePtr == IntPtr.Zero)
-            {
-                throw new ArgumentNullException("filterSourcePtr");
-            }
-            if (git_writestream_next == IntPtr.Zero)
-            {
-                throw new ArgumentNullException("git_writestream_next");
-            }
+            int result = 0;
 
-            thisStream = new GitWriteStream();
-            thisStream.close = StreamCloseCallback;
-            thisStream.write = StreamWriteCallback;
-            thisStream.free = StreamFreeCallback;
-            thisPtr = Marshal.AllocHGlobal(Marshal.SizeOf(thisStream));
-            Marshal.StructureToPtr(thisStream, thisPtr, false);
-            nextPtr = git_writestream_next;
-            nextStream = new GitWriteStream();
-            Marshal.PtrToStructure(nextPtr, nextStream);
-            filterSource = FilterSource.FromNativePtr(filterSourcePtr);
+            try
+            {
+                Ensure.ArgumentNotZeroIntPtr(filterSourcePtr, "filterSourcePtr");
+                Ensure.ArgumentNotZeroIntPtr(git_writestream_next, "git_writestream_next");
+
+                thisStream = new GitWriteStream();
+                thisStream.close = StreamCloseCallback;
+                thisStream.write = StreamWriteCallback;
+                thisStream.free = StreamFreeCallback;
+                thisPtr = Marshal.AllocHGlobal(Marshal.SizeOf(thisStream));
+                Marshal.StructureToPtr(thisStream, thisPtr, false);
+                nextPtr = git_writestream_next;
+                nextStream = new GitWriteStream();
+                Marshal.PtrToStructure(nextPtr, nextStream);
+                filterSource = FilterSource.FromNativePtr(filterSourcePtr);
+            }
+            catch (Exception exception)
+            {
+                // unexpected failures means memory clean up required
+                if (thisPtr != IntPtr.Zero)
+                {
+                    Marshal.FreeHGlobal(thisPtr);
+                    thisPtr = IntPtr.Zero;
+                }
+
+                Proxy.giterr_set_str(GitErrorCategory.Filter, exception.Message);
+                result = (int)GitErrorCode.Error;
+            }
 
             git_writestream_out = thisPtr;
 
-            return 0;
+            return result;
         }
 
-        unsafe int StreamCloseCallback(IntPtr stream)
+        int StreamCloseCallback(IntPtr stream)
         {
             int result = 0;
 
-            if (stream == IntPtr.Zero)
+            try
             {
-                throw new ArgumentNullException("stream");
+                Ensure.ArgumentNotZeroIntPtr(stream, "stream");
+                Ensure.ArhumentIsExpectedIntPtr(stream, thisPtr, "stream");
+
+                result = nextStream.close(nextPtr);
             }
-            if (stream != thisPtr)
+            catch (Exception exception)
             {
-                throw new ArgumentException("Unexpected stream pointer", "stream");
+                Proxy.giterr_set_str(GitErrorCategory.Filter, exception.Message);
+                result = (int)GitErrorCode.Error;
             }
 
-            using (MemoryStream output = new MemoryStream())
-            {
-                Ensure.ZeroResult(result = this.Complete(filterSource.Path, filterSource.Root, output));
-                result = WriteToNextFilter(output);
-            }
-
-            return nextStream.close(nextPtr);
+            return result;
         }
 
-        unsafe void StreamFreeCallback(IntPtr stream)
+        void StreamFreeCallback(IntPtr stream)
         {
-            if (stream == IntPtr.Zero)
-                throw new ArgumentNullException("stream");
-            if (stream != thisPtr)
-                throw new ArgumentException("unexpected stream ptr");
+            try
+            {
+                Ensure.ArgumentNotZeroIntPtr(stream, "stream");
+                Ensure.ArhumentIsExpectedIntPtr(stream, thisPtr, "stream");
 
-            Marshal.FreeHGlobal(thisPtr);
+                Marshal.FreeHGlobal(thisPtr);
+            }
+            catch { }
         }
 
-        unsafe int StreamWriteCallback(IntPtr stream, IntPtr buffer, uint len)
+        unsafe int StreamWriteCallback(IntPtr stream, IntPtr buffer, UIntPtr len)
         {
             int result = 0;
 
-            if (stream == IntPtr.Zero)
+            try
             {
-                throw new ArgumentNullException("stream");
-            }
-            if (buffer == IntPtr.Zero)
-            {
-                throw new ArgumentNullException("buffer");
-            }
-            if (stream != thisPtr)
-            {
-                throw new ArgumentException("Unexpected GitWriteStream", "stream");
-            }
+                Ensure.ArgumentNotZeroIntPtr(stream, "stream");
+                Ensure.ArgumentNotZeroIntPtr(buffer, "buffer");
+                Ensure.ArhumentIsExpectedIntPtr(stream, thisPtr, "stream");
 
-            using (UnmanagedMemoryStream input = new UnmanagedMemoryStream((byte*)buffer.ToPointer(), len))
-            using (MemoryStream output = new MemoryStream())
+                using (UnmanagedMemoryStream input = new UnmanagedMemoryStream((byte*)buffer.ToPointer(), (long)len))
+                using (MemoryStream output = new MemoryStream())
+                {
+
+                    switch (filterSource.SourceMode)
+                    {
+                        case FilterMode.Clean:
+                            result = Clean(filterSource.Path, filterSource.Root, input, output);
+                            break;
+                        case FilterMode.Smudge:
+                            result = Smudge(filterSource.Path, filterSource.Root, input, output);
+                            break;
+                        default:
+                            Proxy.giterr_set_str(GitErrorCategory.Filter, "Unexpected filter mode.");
+                            return (int)GitErrorCode.Ambiguous;
+                    }
+
+                    if (result == (int)GitErrorCode.PassThrough)
+                    {
+                        input.CopyTo(output);
+                    }
+                    else if (result < 0)
+                    {
+                        return result;
+                    }
+
+                    output.Seek(0, SeekOrigin.Begin);
+                    result = WriteToNextFilter(output);
+                }
+            }
+            catch (Exception exception)
             {
-                switch (filterSource.SourceMode)
-                {
-                    case FilterMode.Clean:
-                        result = Clean(filterSource.Path, filterSource.Root, input, output);
-                        break;
-                    case FilterMode.Smudge:
-                        result = Smudge(filterSource.Path, filterSource.Root, input, output);
-                        break;
-                    default:
-                        Proxy.giterr_set_str(GitErrorCategory.Filter, "Unexpected filter mode.");
-                        return (int)GitErrorCode.Ambiguous;
-                }
-
-                if (result == (int)GitErrorCode.PassThrough)
-                {
-                    input.CopyTo(output);
-                }
-                else if (result < 0)
-                {
-                    return result;
-                }
-
-                result = WriteToNextFilter(output);
+                Proxy.giterr_set_str(GitErrorCategory.Filter, exception.Message);
+                result = (int)GitErrorCode.Error;
             }
 
             return result;
@@ -308,20 +320,19 @@ namespace LibGit2Sharp
 
         private unsafe int WriteToNextFilter(MemoryStream output)
         {
-            const int BufferSize = 64 * 1024; // 64K is optimal buffer size per https://technet.microsoft.com/en-us/library/cc938632.aspx
+            // 64K is optimal buffer size per https://technet.microsoft.com/en-us/library/cc938632.aspx
+            const int BufferSize = 64 * 1024; 
 
             int result = 0;
             byte[] bytes = new byte[BufferSize];
             IntPtr bytesPtr = Marshal.AllocHGlobal(BufferSize);
             try
             {
-                output.Seek(0, SeekOrigin.Begin);
-
                 int read = 0;
                 while ((read = output.Read(bytes, 0, bytes.Length)) > 0)
                 {
                     Marshal.Copy(bytes, 0, bytesPtr, read);
-                    if ((result = nextStream.write(nextPtr, bytesPtr, (uint)read)) < 0)
+                    if ((result = nextStream.write(nextPtr, bytesPtr, (UIntPtr)read)) < 0)
                     {
                         Proxy.giterr_set_str(GitErrorCategory.Filter, "Filter write to next stream failed");
                         break;
