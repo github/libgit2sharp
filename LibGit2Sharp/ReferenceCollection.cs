@@ -250,9 +250,25 @@ namespace LibGit2Sharp
             }
 
             using (ReferenceSafeHandle referencePtr = RetrieveReferencePtr(symbolicRef.CanonicalName))
-            using (ReferenceSafeHandle handle = Proxy.git_reference_symbolic_set_target(referencePtr, targetRef.CanonicalName, signature, logMessage))
             {
-                return Reference.BuildFromPtr<Reference>(handle, repo);
+                GitReferenceType type = Proxy.git_reference_type(referencePtr);
+
+                DirectReference directRef = targetRef.ResolveToDirectReference();
+
+                if (type == GitReferenceType.Symbolic)
+                {
+                    using (ReferenceSafeHandle handle = Proxy.git_reference_symbolic_set_target(referencePtr, directRef.TargetIdentifier, signature, logMessage))
+                    {
+                        return Reference.BuildFromPtr<Reference>(handle, repo);
+                    }
+                }
+                else
+                {
+                    using (ReferenceSafeHandle handle = Proxy.git_reference_set_target(referencePtr, directRef.Target.Id, signature, logMessage))
+                    {
+                        return Reference.BuildFromPtr<Reference>(handle, repo);
+                    }
+                }
             }
         }
 
