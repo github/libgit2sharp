@@ -177,6 +177,16 @@ namespace LibGit2Sharp
                     return null;
                 }
 
+                // upstream git uses the "/" character to denote
+                // when a nick should not be resolved to a remote
+                // TODO:
+                // there's probably some pushspec stuff still to
+                // address here, but let me make this bugfix first
+                if (remoteName.Contains("/"))
+                {
+                    return null;
+                }
+
                 return repo.Network.Remotes[remoteName];
             }
         }
