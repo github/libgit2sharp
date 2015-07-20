@@ -236,7 +236,17 @@ namespace LibGit2Sharp
                 return null;
             }
 
-            string trackedReferenceName = Proxy.git_branch_upstream_name(repo.Handle, CanonicalName);
+            string trackedReferenceName = null;
+            try
+            {
+                trackedReferenceName = Proxy.git_branch_upstream_name(repo.Handle, CanonicalName);
+            }
+            catch (InvalidSpecificationException)
+            {
+                // we have no way to pro-actively check this
+                // based on the information available
+                // so we just need to handle this here
+            }
 
             if (trackedReferenceName == null)
             {
