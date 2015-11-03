@@ -1,7 +1,7 @@
 ﻿<?xml version="1.0" encoding="utf-8"?>
 <Project ToolsVersion="4.0" DefaultTargets="Build" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
   <PropertyGroup Condition="'$(SolutionDir)' == '' or '$(SolutionDir)' == '*undefined*'">
-    <SolutionDir>..\..\..\</SolutionDir>
+    <SolutionDir>..\..\</SolutionDir>
   </PropertyGroup>
   <PropertyGroup Condition="'$(PackageDir)' == '' or '$(PackageDir)' == '*undefined*'">
     <PackageDir>$(SolutionDir)packages</PackageDir>
