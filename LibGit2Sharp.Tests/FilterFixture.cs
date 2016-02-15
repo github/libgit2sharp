@@ -4,6 +4,7 @@ using System.Linq;
 using System.IO;
 using LibGit2Sharp.Tests.TestHelpers;
 using Xunit;
+using System.Threading.Tasks;
 
 namespace LibGit2Sharp.Tests
 {
@@ -164,6 +165,51 @@ namespace LibGit2Sharp.Tests
 
                     var textDetected = blob.GetContentText();
                     Assert.Equal(encodedInput, textDetected);
+                }
+            }
+            finally
+            {
+                GlobalSettings.DeregisterFilter(registration);
+            }
+        }
+
+        [Fact]
+        public void CanHandleMultipleCleansConcurrently()
+        {
+            const string decodedInput = "This is a substitution cipher";
+            const string encodedInput = "Guvf vf n fhofgvghgvba pvcure";
+
+            string repoPath = InitNewRepository();
+
+            Action<Stream, Stream> cleanCallback = SubstitutionCipherFilter.RotateByThirteenPlaces;
+
+            var filter = new FakeFilter(FilterName, attributes, cleanCallback);
+            var registration = GlobalSettings.RegisterFilter(filter);
+
+            try
+            {
+                using (var repo = CreateTestRepository(repoPath))
+                {
+                    int count = 30;
+                    var tasks = new Task<FileInfo>[count];
+
+                    for (int i = 0; i < count; i++)
+                        tasks[i] = Task.Factory.StartNew(() => StageNewFile(repo, decodedInput));
+
+                    Task.WaitAll(tasks);
+
+                    var commit = repo.Commit("Clean that file", Constants.Signature, Constants.Signature);
+
+                    foreach (var task in tasks)
+                    {
+                        Assert.True(task.IsCompleted);
+                        Assert.False(task.IsFaulted);
+
+                        var expectedFile = task.Result;
+                        var blob = (Blob)commit.Tree[expectedFile.Name].Target;
+                        var textDetected = blob.GetContentText();
+                        Assert.Equal(encodedInput, textDetected);
+                    }
                 }
             }
             finally
