@@ -1,6 +1,8 @@
 using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
+using System.Diagnostics;
+using System.Globalization;
 using System.IO;
 using System.Linq;
 using System.Runtime.InteropServices;
@@ -48,6 +50,14 @@ namespace LibGit2Sharp
         ~Filter()
         {
             GlobalSettings.DeregisterFilter(this);
+
+#if LEAKS_IDENTIFYING
+            int activeStreamCount = activeStreams.Count;
+            if (activeStreamCount > 0)
+            {
+                Trace.WriteLine(string.Format(CultureInfo.InvariantCulture, "{0} leaked {1} stream handles at finalization", GetType().Name, activeStreamCount));
+            }
+#endif
         }
 
         private readonly string name;
