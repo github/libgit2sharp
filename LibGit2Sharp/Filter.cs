@@ -252,11 +252,14 @@ namespace LibGit2Sharp
                 state.thisStream.close = StreamCloseCallback;
                 state.thisStream.write = StreamWriteCallback;
                 state.thisStream.free = StreamFreeCallback;
+
                 state.thisPtr = Marshal.AllocHGlobal(Marshal.SizeOf(state.thisStream));
                 Marshal.StructureToPtr(state.thisStream, state.thisPtr, false);
+
                 state.nextPtr = git_writestream_next;
                 state.nextStream = new GitWriteStream();
                 Marshal.PtrToStructure(state.nextPtr, state.nextStream);
+                
                 state.filterSource = FilterSource.FromNativePtr(filterSourcePtr);
                 state.output = new WriteStream(state.nextStream, state.nextPtr);
 
