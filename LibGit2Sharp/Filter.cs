@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
@@ -52,14 +53,17 @@ namespace LibGit2Sharp
         private readonly string name;
         private readonly IEnumerable<FilterAttributeEntry> attributes;
         private readonly GitFilter gitFilter;
-        private readonly object @lock = new object();
+        private readonly ConcurrentDictionary<IntPtr, StreamState> activeStreams = new ConcurrentDictionary<IntPtr, StreamState>();
 
-        private GitWriteStream thisStream;
-        private GitWriteStream nextStream;
-        private IntPtr thisPtr;
-        private IntPtr nextPtr;
-        private FilterSource filterSource;
-        private Stream output;
+        private class StreamState
+        {
+            public GitWriteStream thisStream;
+            public GitWriteStream nextStream;
+            public IntPtr thisPtr;
+            public IntPtr nextPtr;
+            public FilterSource filterSource;
+            public Stream output;
+        }
 
         /// <summary>
         /// The name that this filter was registered with
@@ -227,33 +231,39 @@ namespace LibGit2Sharp
         int StreamCreateCallback(out IntPtr git_writestream_out, GitFilter self, IntPtr payload, IntPtr filterSourcePtr, IntPtr git_writestream_next)
         {
             int result = 0;
+            var state = new StreamState();
 
             try
             {
                 Ensure.ArgumentNotZeroIntPtr(filterSourcePtr, "filterSourcePtr");
                 Ensure.ArgumentNotZeroIntPtr(git_writestream_next, "git_writestream_next");
 
-                thisStream = new GitWriteStream();
-                thisStream.close = StreamCloseCallback;
-                thisStream.write = StreamWriteCallback;
-                thisStream.free = StreamFreeCallback;
-                thisPtr = Marshal.AllocHGlobal(Marshal.SizeOf(thisStream));
-                Marshal.StructureToPtr(thisStream, thisPtr, false);
-                nextPtr = git_writestream_next;
-                nextStream = new GitWriteStream();
-                Marshal.PtrToStructure(nextPtr, nextStream);
-                filterSource = FilterSource.FromNativePtr(filterSourcePtr);
-                output = new WriteStream(nextStream, nextPtr);
+                state.thisStream = new GitWriteStream();
+                state.thisStream.close = StreamCloseCallback;
+                state.thisStream.write = StreamWriteCallback;
+                state.thisStream.free = StreamFreeCallback;
+                state.thisPtr = Marshal.AllocHGlobal(Marshal.SizeOf(state.thisStream));
+                Marshal.StructureToPtr(state.thisStream, state.thisPtr, false);
+                state.nextPtr = git_writestream_next;
+                state.nextStream = new GitWriteStream();
+                Marshal.PtrToStructure(state.nextPtr, state.nextStream);
+                state.filterSource = FilterSource.FromNativePtr(filterSourcePtr);
+                state.output = new WriteStream(state.nextStream, state.nextPtr);
 
-                Create(filterSource.Path, filterSource.Root, filterSource.SourceMode);
+                Create(state.filterSource.Path, state.filterSource.Root, state.filterSource.SourceMode);
+
+                if (!activeStreams.TryAdd(state.thisPtr, state))
+                {
+                    throw new InvalidOperationException();
+                }
             }
             catch (Exception exception)
             {
                 // unexpected failures means memory clean up required
-                if (thisPtr != IntPtr.Zero)
+                if (state.thisPtr != IntPtr.Zero)
                 {
-                    Marshal.FreeHGlobal(thisPtr);
-                    thisPtr = IntPtr.Zero;
+                    Marshal.FreeHGlobal(state.thisPtr);
+                    state.thisPtr = IntPtr.Zero;
                 }
 
                 Log.Write(LogLevel.Error, "Filter.StreamCreateCallback exception");
@@ -262,7 +272,7 @@ namespace LibGit2Sharp
                 result = (int)GitErrorCode.Error;
             }
 
-            git_writestream_out = thisPtr;
+            git_writestream_out = state.thisPtr;
 
             return result;
         }
@@ -270,16 +280,25 @@ namespace LibGit2Sharp
         int StreamCloseCallback(IntPtr stream)
         {
             int result = 0;
+            StreamState state;
 
             try
             {
                 Ensure.ArgumentNotZeroIntPtr(stream, "stream");
-                Ensure.ArgumentIsExpectedIntPtr(stream, thisPtr, "stream");
 
-                using (BufferedStream outputBuffer = new BufferedStream(output, BufferSize))
+                if(!activeStreams.TryGetValue(stream, out state))
                 {
-                    Complete(filterSource.Path, filterSource.Root, outputBuffer);
+                    throw new InvalidOperationException();
                 }
+
+                Ensure.ArgumentIsExpectedIntPtr(stream, state.thisPtr, "stream");
+
+                using (BufferedStream outputBuffer = new BufferedStream(state.output, BufferSize))
+                {
+                    Complete(state.filterSource.Path, state.filterSource.Root, outputBuffer);
+                }
+
+                result = state.nextStream.close(state.nextPtr);
             }
             catch (Exception exception)
             {
@@ -289,19 +308,25 @@ namespace LibGit2Sharp
                 result = (int)GitErrorCode.Error;
             }
 
-            result = nextStream.close(nextPtr);
-
             return result;
         }
 
         void StreamFreeCallback(IntPtr stream)
         {
+            StreamState state;
+
             try
             {
                 Ensure.ArgumentNotZeroIntPtr(stream, "stream");
-                Ensure.ArgumentIsExpectedIntPtr(stream, thisPtr, "stream");
 
-                Marshal.FreeHGlobal(thisPtr);
+                if (!activeStreams.TryRemove(stream, out state))
+                {
+                    throw new InvalidOperationException();
+                }
+
+                Ensure.ArgumentIsExpectedIntPtr(stream, state.thisPtr, "stream");
+
+                Marshal.FreeHGlobal(state.thisPtr);
             }
             catch (Exception exception)
             {
@@ -313,24 +338,31 @@ namespace LibGit2Sharp
         unsafe int StreamWriteCallback(IntPtr stream, IntPtr buffer, UIntPtr len)
         {
             int result = 0;
+            StreamState state;
 
             try
             {
                 Ensure.ArgumentNotZeroIntPtr(stream, "stream");
                 Ensure.ArgumentNotZeroIntPtr(buffer, "buffer");
-                Ensure.ArgumentIsExpectedIntPtr(stream, thisPtr, "stream");
+
+                if (!activeStreams.TryGetValue(stream, out state))
+                {
+                    throw new InvalidOperationException();
+                }
+
+                Ensure.ArgumentIsExpectedIntPtr(stream, state.thisPtr, "stream");
 
                 using (UnmanagedMemoryStream input = new UnmanagedMemoryStream((byte*)buffer.ToPointer(), (long)len))
-                using (BufferedStream outputBuffer = new BufferedStream(output, BufferSize))
+                using (BufferedStream outputBuffer = new BufferedStream(state.output, BufferSize))
                 {
-                    switch (filterSource.SourceMode)
+                    switch (state.filterSource.SourceMode)
                     {
                         case FilterMode.Clean:
-                            Clean(filterSource.Path, filterSource.Root, input, outputBuffer);
+                            Clean(state.filterSource.Path, state.filterSource.Root, input, outputBuffer);
                             break;
 
                         case FilterMode.Smudge:
-                            Smudge(filterSource.Path, filterSource.Root, input, outputBuffer);
+                            Smudge(state.filterSource.Path, state.filterSource.Root, input, outputBuffer);
                             break;
 
                         default:
