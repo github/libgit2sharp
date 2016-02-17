@@ -267,7 +267,9 @@ namespace LibGit2Sharp
 
                 if (!activeStreams.TryAdd(state.thisPtr, state))
                 {
-                    throw new InvalidOperationException();
+                    // AFAICT this is a theoretical error that could only happen if we manage 
+                    // to free the stream pointer but fail to remove the dictionary entry.
+                    throw new InvalidOperationException("Overlapping stream pointers");
                 }
             }
             catch (Exception exception)
@@ -301,7 +303,7 @@ namespace LibGit2Sharp
 
                 if(!activeStreams.TryGetValue(stream, out state))
                 {
-                    throw new InvalidOperationException();
+                    throw new ArgumentException("Unknown stream pointer", "stream");
                 }
 
                 Ensure.ArgumentIsExpectedIntPtr(stream, state.thisPtr, "stream");
@@ -334,7 +336,7 @@ namespace LibGit2Sharp
 
                 if (!activeStreams.TryRemove(stream, out state))
                 {
-                    throw new InvalidOperationException();
+                    throw new ArgumentException("Double free or invalid stream pointer", "stream");
                 }
 
                 Ensure.ArgumentIsExpectedIntPtr(stream, state.thisPtr, "stream");
@@ -360,7 +362,7 @@ namespace LibGit2Sharp
 
                 if (!activeStreams.TryGetValue(stream, out state))
                 {
-                    throw new InvalidOperationException();
+                    throw new ArgumentException("Invalid or already freed stream pointer", "stream");
                 }
 
                 Ensure.ArgumentIsExpectedIntPtr(stream, state.thisPtr, "stream");
