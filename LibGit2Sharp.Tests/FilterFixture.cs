@@ -174,42 +174,40 @@ namespace LibGit2Sharp.Tests
         }
 
         [Fact]
-        public void CanHandleMultipleCleansConcurrently()
+        public void CanHandleMultipleSmudgesConcurrently()
         {
             const string decodedInput = "This is a substitution cipher";
             const string encodedInput = "Guvf vf n fhofgvghgvba pvcure";
 
-            string repoPath = InitNewRepository();
+            const string branchName = "branch";
 
-            Action<Stream, Stream> cleanCallback = SubstitutionCipherFilter.RotateByThirteenPlaces;
+            Action<Stream, Stream> smudgeCallback = SubstitutionCipherFilter.RotateByThirteenPlaces;
 
-            var filter = new FakeFilter(FilterName, attributes, cleanCallback);
+            var filter = new FakeFilter(FilterName, attributes, null, smudgeCallback);
             var registration = GlobalSettings.RegisterFilter(filter);
 
             try
             {
-                using (var repo = CreateTestRepository(repoPath))
+                int count = 30;
+                var tasks = new Task<FileInfo>[count];
+
+                for (int i = 0; i < count; i++)
                 {
-                    int count = 30;
-                    var tasks = new Task<FileInfo>[count];
-
-                    for (int i = 0; i < count; i++)
-                        tasks[i] = Task.Factory.StartNew(() => StageNewFile(repo, decodedInput));
-
-                    Task.WaitAll(tasks);
-
-                    var commit = repo.Commit("Clean that file", Constants.Signature, Constants.Signature);
-
-                    foreach (var task in tasks)
+                    tasks[i] = Task.Factory.StartNew(() =>
                     {
-                        Assert.True(task.IsCompleted);
-                        Assert.False(task.IsFaulted);
+                        string repoPath = InitNewRepository();
+                        return CheckoutFileForSmudge(repoPath, branchName, encodedInput);
+                    });
+                }
 
-                        var expectedFile = task.Result;
-                        var blob = (Blob)commit.Tree[expectedFile.Name].Target;
-                        var textDetected = blob.GetContentText();
-                        Assert.Equal(encodedInput, textDetected);
-                    }
+                Task.WaitAll(tasks);
+
+                foreach(var task in tasks)
+                {
+                    FileInfo expectedFile = task.Result;
+
+                    string readAllText = File.ReadAllText(expectedFile.FullName);
+                    Assert.Equal(decodedInput, readAllText);
                 }
             }
             finally
