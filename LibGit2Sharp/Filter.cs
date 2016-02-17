@@ -65,6 +65,10 @@ namespace LibGit2Sharp
         private readonly GitFilter gitFilter;
         private readonly ConcurrentDictionary<IntPtr, StreamState> activeStreams = new ConcurrentDictionary<IntPtr, StreamState>();
 
+        /// <summary>
+        /// State bag used to keep necessary reference from being
+        /// garbage collected during filter processing.
+        /// </summary>
         private class StreamState
         {
             public GitWriteStream thisStream;
