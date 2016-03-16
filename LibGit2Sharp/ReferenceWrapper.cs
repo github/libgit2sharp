@@ -16,7 +16,10 @@ namespace LibGit2Sharp
         /// The repository.
         /// </summary>
         protected readonly Repository repo;
-        protected readonly Reference reference;
+        /// <summary>
+        /// The underlying reference
+        /// </summary>
+        readonly Reference reference;
         private readonly Lazy<TObject> objectBuilder;
 
         private static readonly LambdaEqualityHelper<ReferenceWrapper<TObject>> equalityHelper =
@@ -59,6 +62,17 @@ namespace LibGit2Sharp
         public virtual string FriendlyName
         {
             get { return Shorten(); }
+        }
+
+        /// <summary>
+        /// The underlying <see cref="Reference"/>
+        /// </summary>
+        public virtual Reference Reference
+        {
+            get
+            {
+                return reference;
+            }
         }
 
         /// <summary>
