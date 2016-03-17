@@ -52,7 +52,8 @@ namespace LibGit2Sharp
 
         internal TreeChanges(DiffSafeHandle diff)
         {
-            Proxy.git_diff_foreach(diff, FileCallback, null, null);
+            using(diff)
+                Proxy.git_diff_foreach(diff, FileCallback, null, null);
         }
 
         private int FileCallback(GitDiffDelta delta, float progress, IntPtr payload)
@@ -168,6 +169,18 @@ namespace LibGit2Sharp
                                      Renamed.Count(),
                                      Copied.Count());
             }
+        }
+
+        public void Dispose()
+        {
+            Dispose(true);
+            GC.SuppressFinalize(this);
+        }
+
+        protected virtual void Dispose(bool disposing)
+        {
+            // This doesn't do anything yet because it loads everything
+            // eagerly and disposes of the diff handle in the constructor.
         }
     }
 }

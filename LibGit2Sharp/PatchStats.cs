@@ -15,6 +15,8 @@ namespace LibGit2Sharp
     [DebuggerDisplay("{DebuggerDisplay,nq}")]
     public class PatchStats : IEnumerable<ContentChangeStats>, IDiffResult
     {
+        private readonly DiffSafeHandle diff;
+
         private readonly IDictionary<FilePath, ContentChangeStats> changes = new Dictionary<FilePath, ContentChangeStats>();
         private readonly int totalLinesAdded;
         private readonly int totalLinesDeleted;
@@ -27,23 +29,25 @@ namespace LibGit2Sharp
 
         internal PatchStats(DiffSafeHandle diff)
         {
-            int count = Proxy.git_diff_num_deltas(diff);
-            for (int i = 0; i < count; i++)
+            using (diff)
             {
-                using (var patch = Proxy.git_patch_from_diff(diff, i))
+                int count = Proxy.git_diff_num_deltas(diff);
+                for (int i = 0; i < count; i++)
                 {
-                    var delta = Proxy.git_diff_get_delta(diff, i);
-                    var pathPtr = delta.NewFile.Path != IntPtr.Zero ? delta.NewFile.Path : delta.OldFile.Path;
-                    var newFilePath = LaxFilePathMarshaler.FromNative(pathPtr);
+                    using (var patch = Proxy.git_patch_from_diff(diff, i))
+                    {
+                        var delta = Proxy.git_diff_get_delta(diff, i);
+                        var pathPtr = delta.NewFile.Path != IntPtr.Zero ? delta.NewFile.Path : delta.OldFile.Path;
+                        var newFilePath = LaxFilePathMarshaler.FromNative(pathPtr);
 
-                    var stats = Proxy.git_patch_line_stats(patch);
-                    int added = stats.Item1;
-                    int deleted = stats.Item2;
-                    changes.Add(newFilePath, new ContentChangeStats(added, deleted));
-                    totalLinesAdded += added;
-                    totalLinesDeleted += deleted;
+                        var stats = Proxy.git_patch_line_stats(patch);
+                        int added = stats.Item1;
+                        int deleted = stats.Item2;
+                        changes.Add(newFilePath, new ContentChangeStats(added, deleted));
+                        totalLinesAdded += added;
+                        totalLinesDeleted += deleted;
+                    }
                 }
-
             }
         }
 
@@ -116,6 +120,18 @@ namespace LibGit2Sharp
                                      TotalLinesAdded,
                                      TotalLinesDeleted);
             }
+        }
+
+        public void Dispose()
+        {
+            Dispose(true);
+            GC.SuppressFinalize(this);
+        }
+
+        protected virtual void Dispose(bool disposing)
+        {
+            // This doesn't do anything yet because it loads everything
+            // eagerly and disposes of the diff handle in the constructor.
         }
     }
 }
