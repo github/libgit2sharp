@@ -1709,64 +1709,65 @@ namespace LibGit2Sharp
                 diffModifiers |= DiffModifiers.IncludeIgnored;
             }
 
-            var changes = Diff.Compare<TreeChanges>(diffModifiers, paths, explicitPathsOptions,
-                new CompareOptions { Similarity = SimilarityOptions.None });
-
-            var unexpectedTypesOfChanges = changes
-                .Where(
-                    tec => tec.Status != ChangeKind.Added &&
-                           tec.Status != ChangeKind.Modified &&
-                           tec.Status != ChangeKind.Conflicted &&
-                           tec.Status != ChangeKind.Unmodified &&
-                           tec.Status != ChangeKind.Deleted).ToList();
-
-            if (unexpectedTypesOfChanges.Count > 0)
+            using (var changes = Diff.Compare<TreeChanges>(diffModifiers, paths, explicitPathsOptions,
+                new CompareOptions { Similarity = SimilarityOptions.None }))
             {
-                throw new InvalidOperationException(
-                    string.Format(CultureInfo.InvariantCulture,
-                        "Entry '{0}' bears an unexpected ChangeKind '{1}'",
-                        unexpectedTypesOfChanges[0].Path, unexpectedTypesOfChanges[0].Status));
-            }
+                var unexpectedTypesOfChanges = changes
+                    .Where(
+                        tec => tec.Status != ChangeKind.Added &&
+                               tec.Status != ChangeKind.Modified &&
+                               tec.Status != ChangeKind.Conflicted &&
+                               tec.Status != ChangeKind.Unmodified &&
+                               tec.Status != ChangeKind.Deleted).ToList();
 
-            /* Remove files from the index that don't exist on disk */
-            foreach (TreeEntryChanges treeEntryChanges in changes)
-            {
-                switch (treeEntryChanges.Status)
+                if (unexpectedTypesOfChanges.Count > 0)
                 {
-                    case ChangeKind.Conflicted:
-                        if (!treeEntryChanges.Exists)
-                        {
-                            RemoveFromIndex(treeEntryChanges.Path);
-                        }
-                        break;
-
-                    case ChangeKind.Deleted:
-                        RemoveFromIndex(treeEntryChanges.Path);
-                        break;
-
-                    default:
-                        continue;
+                    throw new InvalidOperationException(
+                        string.Format(CultureInfo.InvariantCulture,
+                            "Entry '{0}' bears an unexpected ChangeKind '{1}'",
+                            unexpectedTypesOfChanges[0].Path, unexpectedTypesOfChanges[0].Status));
                 }
-            }
 
-            foreach (TreeEntryChanges treeEntryChanges in changes)
-            {
-                switch (treeEntryChanges.Status)
+                /* Remove files from the index that don't exist on disk */
+                foreach (TreeEntryChanges treeEntryChanges in changes)
                 {
-                    case ChangeKind.Added:
-                    case ChangeKind.Modified:
-                        AddToIndex(treeEntryChanges.Path);
-                        break;
+                    switch (treeEntryChanges.Status)
+                    {
+                        case ChangeKind.Conflicted:
+                            if (!treeEntryChanges.Exists)
+                            {
+                                RemoveFromIndex(treeEntryChanges.Path);
+                            }
+                            break;
 
-                    case ChangeKind.Conflicted:
-                        if (treeEntryChanges.Exists)
-                        {
+                        case ChangeKind.Deleted:
+                            RemoveFromIndex(treeEntryChanges.Path);
+                            break;
+
+                        default:
+                            continue;
+                    }
+                }
+
+                foreach (TreeEntryChanges treeEntryChanges in changes)
+                {
+                    switch (treeEntryChanges.Status)
+                    {
+                        case ChangeKind.Added:
+                        case ChangeKind.Modified:
                             AddToIndex(treeEntryChanges.Path);
-                        }
-                        break;
+                            break;
 
-                    default:
-                        continue;
+                        case ChangeKind.Conflicted:
+                            if (treeEntryChanges.Exists)
+                            {
+                                AddToIndex(treeEntryChanges.Path);
+                            }
+                            break;
+
+                        default:
+                            continue;
+                    }
                 }
             }
 
@@ -1802,9 +1803,10 @@ namespace LibGit2Sharp
 
             if (Info.IsHeadUnborn)
             {
-                var changes = Diff.Compare<TreeChanges>(null, DiffTargets.Index, paths, explicitPathsOptions, new CompareOptions { Similarity = SimilarityOptions.None });
-
-                Index.Replace(changes);
+                using (var changes = Diff.Compare<TreeChanges>(null, DiffTargets.Index, paths, explicitPathsOptions, new CompareOptions { Similarity = SimilarityOptions.None }))
+                {
+                    Index.Replace(changes);
+                }
             }
             else
             {
@@ -2087,48 +2089,49 @@ namespace LibGit2Sharp
         private IEnumerable<string> RemoveStagedItems(IEnumerable<string> paths, bool removeFromWorkingDirectory = true, ExplicitPathsOptions explicitPathsOptions = null)
         {
             var removed = new List<string>();
-            var changes = Diff.Compare<TreeChanges>(DiffModifiers.IncludeUnmodified | DiffModifiers.IncludeUntracked, paths, explicitPathsOptions);
-
-            foreach (var treeEntryChanges in changes)
+            using (var changes = Diff.Compare<TreeChanges>(DiffModifiers.IncludeUnmodified | DiffModifiers.IncludeUntracked, paths, explicitPathsOptions))
             {
-                var status = RetrieveStatus(treeEntryChanges.Path);
-
-                switch (treeEntryChanges.Status)
+                foreach (var treeEntryChanges in changes)
                 {
-                    case ChangeKind.Added:
-                    case ChangeKind.Deleted:
-                        removed.Add(RemoveFromIndex(treeEntryChanges.Path));
-                        break;
+                    var status = RetrieveStatus(treeEntryChanges.Path);
 
-                    case ChangeKind.Unmodified:
-                        if (removeFromWorkingDirectory && (
-                            status.HasFlag(FileStatus.ModifiedInIndex) ||
-                            status.HasFlag(FileStatus.NewInIndex)))
-                        {
-                            throw new RemoveFromIndexException("Unable to remove file '{0}', as it has changes staged in the index. You can call the Remove() method with removeFromWorkingDirectory=false if you want to remove it from the index only.",
-                                                               treeEntryChanges.Path);
-                        }
-                        removed.Add(RemoveFromIndex(treeEntryChanges.Path));
-                        continue;
+                    switch (treeEntryChanges.Status)
+                    {
+                        case ChangeKind.Added:
+                        case ChangeKind.Deleted:
+                            removed.Add(RemoveFromIndex(treeEntryChanges.Path));
+                            break;
 
-                    case ChangeKind.Modified:
-                        if (status.HasFlag(FileStatus.ModifiedInWorkdir) && status.HasFlag(FileStatus.ModifiedInIndex))
-                        {
-                            throw new RemoveFromIndexException("Unable to remove file '{0}', as it has staged content different from both the working directory and the HEAD.",
-                                                               treeEntryChanges.Path);
-                        }
-                        if (removeFromWorkingDirectory)
-                        {
-                            throw new RemoveFromIndexException("Unable to remove file '{0}', as it has local modifications. You can call the Remove() method with removeFromWorkingDirectory=false if you want to remove it from the index only.",
-                                                               treeEntryChanges.Path);
-                        }
-                        removed.Add(RemoveFromIndex(treeEntryChanges.Path));
-                        continue;
+                        case ChangeKind.Unmodified:
+                            if (removeFromWorkingDirectory && (
+                                status.HasFlag(FileStatus.ModifiedInIndex) ||
+                                status.HasFlag(FileStatus.NewInIndex)))
+                            {
+                                throw new RemoveFromIndexException("Unable to remove file '{0}', as it has changes staged in the index. You can call the Remove() method with removeFromWorkingDirectory=false if you want to remove it from the index only.",
+                                                                   treeEntryChanges.Path);
+                            }
+                            removed.Add(RemoveFromIndex(treeEntryChanges.Path));
+                            continue;
 
-                    default:
-                        throw new RemoveFromIndexException("Unable to remove file '{0}'. Its current status is '{1}'.",
-                                                           treeEntryChanges.Path,
-                                                           treeEntryChanges.Status);
+                        case ChangeKind.Modified:
+                            if (status.HasFlag(FileStatus.ModifiedInWorkdir) && status.HasFlag(FileStatus.ModifiedInIndex))
+                            {
+                                throw new RemoveFromIndexException("Unable to remove file '{0}', as it has staged content different from both the working directory and the HEAD.",
+                                                                   treeEntryChanges.Path);
+                            }
+                            if (removeFromWorkingDirectory)
+                            {
+                                throw new RemoveFromIndexException("Unable to remove file '{0}', as it has local modifications. You can call the Remove() method with removeFromWorkingDirectory=false if you want to remove it from the index only.",
+                                                                   treeEntryChanges.Path);
+                            }
+                            removed.Add(RemoveFromIndex(treeEntryChanges.Path));
+                            continue;
+
+                        default:
+                            throw new RemoveFromIndexException("Unable to remove file '{0}'. Its current status is '{1}'.",
+                                                               treeEntryChanges.Path,
+                                                               treeEntryChanges.Status);
+                    }
                 }
             }
 

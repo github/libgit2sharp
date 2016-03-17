@@ -323,8 +323,10 @@ namespace LibGit2Sharp
         {
             Ensure.ArgumentNotNull(commit, "commit");
 
-            var changes = repo.Diff.Compare<TreeChanges>(commit.Tree, DiffTargets.Index, paths, explicitPathsOptions, new CompareOptions { Similarity = SimilarityOptions.None });
-            Replace(changes);
+            using (var changes = repo.Diff.Compare<TreeChanges>(commit.Tree, DiffTargets.Index, paths, explicitPathsOptions, new CompareOptions { Similarity = SimilarityOptions.None }))
+            {
+                Replace(changes);
+            }
         }
     }
 }
